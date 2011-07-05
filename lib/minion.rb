@@ -27,6 +27,23 @@ module Minion
 		log "send: #{queue}:#{encoded}"
 		bunny.queue(queue, :durable => true, :auto_delete => false).publish(encoded)
 	end
+	
+	def publish(jobs, data = {})
+		raise "cannot enqueue a nil job" if jobs.nil?
+		raise "cannot enqueue an empty job" if jobs.empty?
+
+		## jobs can be one or more jobs
+		if jobs.respond_to? :shift
+			exchange = jobs.shift
+			data["next_job"] = jobs unless jobs.empty?
+		else
+			exchange = jobs
+		end
+
+		encoded = JSON.dump(data)
+		log "send: #{queue}:#{encoded}"
+		bunny.exchange(queue, :durable => true, :auto_delete => false, :type => :fanout).publish(encoded)	  
+  end
 
 	def log(msg)
 		@@logger ||= proc { |m| puts "#{Time.now} :minion: #{m}" }
@@ -51,6 +68,39 @@ module Minion
 		handler.sub = lambda do
 			log "subscribing to #{queue}"
 			MQ.queue(queue, :durable => true, :auto_delete => false).subscribe(:ack => true) do |h,m|
+				return if AMQP.closing?
+				begin
+					log "recv: #{queue}:#{m}"
+
+					args = decode_json(m)
+
+					result = yield(args)
+
+					next_job(args, result)
+				rescue Object => e
+					raise unless error_handler
+					error_handler.call(e,queue,m,h)
+				end
+				h.ack
+				check_all
+			end
+		end
+		@@handlers ||= []
+		at_exit { Minion.run } if @@handlers.size == 0
+		@@handlers << handler
+	end
+	
+	def subscribe(exchange_name, queue, options = {}, &blk)
+	  exchange = MQ.fanout(exchange_name)
+		handler = Minion::Handler.new queue
+		handler.when = options[:when] if options[:when]
+		handler.unsub = lambda do
+			log "unsubscribing to #{queue}"
+			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).exchange(exchange).unsubscribe
+		end
+		handler.sub = lambda do
+			log "subscribing to #{queue}"
+			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).exchange(exchange).subscribe(:ack => true) do |h,m|
 				return if AMQP.closing?
 				begin
 					log "recv: #{queue}:#{m}"
