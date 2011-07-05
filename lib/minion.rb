@@ -41,8 +41,8 @@ module Minion
 		end
 
 		encoded = JSON.dump(data)
-		log "send: #{queue}:#{encoded}"
-		bunny.exchange(queue, :durable => true, :auto_delete => false, :type => :fanout).publish(encoded)	  
+		log "send: #{exchange}:#{encoded}"
+		bunny.exchange(exchange, :durable => true, :auto_delete => false, :type => :fanout).publish(encoded)	  
   end
 
 	def log(msg)
@@ -91,16 +91,17 @@ module Minion
 	end
 	
 	def subscribe(exchange_name, queue, options = {}, &blk)
-	  exchange = MQ.fanout(exchange_name)
 		handler = Minion::Handler.new queue
 		handler.when = options[:when] if options[:when]
 		handler.unsub = lambda do
 			log "unsubscribing to #{queue}"
-			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).exchange(exchange).unsubscribe
+  	  exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
+			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange).unsubscribe
 		end
 		handler.sub = lambda do
 			log "subscribing to #{queue}"
-			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).exchange(exchange).subscribe(:ack => true) do |h,m|
+  	  exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
+			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange).subscribe(:ack => true) do |h,m|
 				return if AMQP.closing?
 				begin
 					log "recv: #{queue}:#{m}"
