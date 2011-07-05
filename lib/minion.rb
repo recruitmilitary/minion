@@ -12,37 +12,19 @@ module Minion
 	end
 
 	def enqueue(jobs, data = {})
-		raise "cannot enqueue a nil job" if jobs.nil?
-		raise "cannot enqueue an empty job" if jobs.empty?
+    queue_or_exchange = extract_queue_or_exchange(jobs)
 
-		## jobs can be one or more jobs
-		if jobs.respond_to? :shift
-			queue = jobs.shift
-			data["next_job"] = jobs unless jobs.empty?
-		else
-			queue = jobs
-		end
-
-		encoded = JSON.dump(data)
-		log "send: #{queue}:#{encoded}"
-		bunny.queue(queue, :durable => true, :auto_delete => false).publish(encoded)
+		encoded = encode(data)
+		log "send: #{queue_or_exchange}:#{encoded}"
+		bunny.queue(queue_or_exchange, :durable => true, :auto_delete => false).publish(encoded)
 	end
-	
+
 	def publish(jobs, data = {})
-		raise "cannot enqueue a nil job" if jobs.nil?
-		raise "cannot enqueue an empty job" if jobs.empty?
+    queue_or_exchange = extract_queue_or_exchange(jobs)
 
-		## jobs can be one or more jobs
-		if jobs.respond_to? :shift
-			exchange = jobs.shift
-			data["next_job"] = jobs unless jobs.empty?
-		else
-			exchange = jobs
-		end
-
-		encoded = JSON.dump(data)
-		log "send: #{exchange}:#{encoded}"
-		bunny.exchange(exchange, :durable => true, :auto_delete => false, :type => :fanout).publish(encoded)	  
+		encoded = encode(data)
+		log "send: #{queue_or_exchange}:#{encoded}"
+		bunny.exchange(queue_or_exchange, :durable => true, :auto_delete => false, :type => :fanout).publish(encoded)
   end
 
 	def log(msg)
@@ -89,7 +71,7 @@ module Minion
 		at_exit { Minion.run } if @@handlers.size == 0
 		@@handlers << handler
 	end
-	
+
 	def subscribe(exchange_name, queue, options = {}, &blk)
 		handler = Minion::Handler.new queue
 		handler.when = options[:when] if options[:when]
@@ -191,5 +173,24 @@ module Minion
 	def error_handler
 		@@error_handler ||= nil
 	end
+
+  def extract_queue_or_exchange(jobs)
+		raise "cannot enqueue a nil job" if jobs.nil?
+		raise "cannot enqueue an empty job" if jobs.empty?
+
+		## jobs can be one or more jobs
+		if jobs.respond_to? :shift
+			queue_or_exchange = jobs.shift
+			data["next_job"] = jobs unless jobs.empty?
+		else
+			queue_or_exchange = jobs
+		end
+
+    queue_or_exchange
+  end
+  
+  def encode(data)
+    JSON.dump(data)
+  end
 end
 
