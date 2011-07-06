@@ -40,12 +40,6 @@ module Minion
 		@@logger = blk
 	end
 
-  def add_handler(queue, options, &blk)
-		@@handlers ||= []
-		at_exit { Minion.run } if @@handlers.size == 0
-		@@handlers << build_handler(queue, options, &blk)
-  end
-
 	def job(queue, options = {}, &blk)
     add_handler(queue, options, &blk)
 	end
@@ -184,6 +178,12 @@ module Minion
 			end
 		end
     handler
+  end
+
+  def add_handler(queue, options, &blk)
+    @@handlers ||= []
+    at_exit { Minion.run } if @@handlers.size == 0
+    @@handlers << build_handler(queue, options, &blk)
   end
 
 end
