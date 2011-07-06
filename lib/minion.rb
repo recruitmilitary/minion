@@ -12,7 +12,7 @@ module Minion
 	end
 
 	def enqueue(jobs, data = {})
-    queue_or_exchange = extract_queue_or_exchange(jobs)
+    queue_or_exchange = extract_queue_or_exchange(jobs, data)
 
 		encoded = encode(data)
 		log "send: #{queue_or_exchange}:#{encoded}"
@@ -20,7 +20,7 @@ module Minion
 	end
 
 	def publish(jobs, data = {})
-    queue_or_exchange = extract_queue_or_exchange(jobs)
+    queue_or_exchange = extract_queue_or_exchange(jobs, data)
 
 		encoded = encode(data)
 		log "send: #{queue_or_exchange}:#{encoded}"
@@ -174,7 +174,7 @@ module Minion
 		@@error_handler ||= nil
 	end
 
-  def extract_queue_or_exchange(jobs)
+  def extract_queue_or_exchange(jobs, data)
 		raise "cannot enqueue a nil job" if jobs.nil?
 		raise "cannot enqueue an empty job" if jobs.empty?
 
@@ -188,7 +188,7 @@ module Minion
 
     queue_or_exchange
   end
-  
+
   def encode(data)
     JSON.dump(data)
   end
