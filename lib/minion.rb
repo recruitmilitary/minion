@@ -40,70 +40,19 @@ module Minion
 		@@logger = blk
 	end
 
-	def job(queue, options = {}, &blk)
-		handler = Minion::Handler.new queue
-		handler.when = options[:when] if options[:when]
-		handler.unsub = lambda do
-			log "unsubscribing to #{queue}"
-			MQ.queue(queue, :durable => true, :auto_delete => false).unsubscribe
-		end
-		handler.sub = lambda do
-			log "subscribing to #{queue}"
-			MQ.queue(queue, :durable => true, :auto_delete => false).subscribe(:ack => true) do |h,m|
-				return if AMQP.closing?
-				begin
-					log "recv: #{queue}:#{m}"
-
-					args = decode_json(m)
-
-					result = yield(args)
-
-					next_job(args, result)
-				rescue Object => e
-					raise unless error_handler
-					error_handler.call(e,queue,m,h)
-				end
-				h.ack
-				check_all
-			end
-		end
+  def add_handler(queue, options, &blk)
 		@@handlers ||= []
 		at_exit { Minion.run } if @@handlers.size == 0
-		@@handlers << handler
+		@@handlers << build_handler(queue, options, &blk)
+  end
+
+	def job(queue, options = {}, &blk)
+    add_handler(queue, options, &blk)
 	end
 
 	def subscribe(exchange_name, queue, options = {}, &blk)
-		handler = Minion::Handler.new queue
-		handler.when = options[:when] if options[:when]
-		handler.unsub = lambda do
-			log "unsubscribing to #{queue}"
-  	  exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
-			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange).unsubscribe
-		end
-		handler.sub = lambda do
-			log "subscribing to #{queue}"
-  	  exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
-			MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange).subscribe(:ack => true) do |h,m|
-				return if AMQP.closing?
-				begin
-					log "recv: #{queue}:#{m}"
-
-					args = decode_json(m)
-
-					result = yield(args)
-
-					next_job(args, result)
-				rescue Object => e
-					raise unless error_handler
-					error_handler.call(e,queue,m,h)
-				end
-				h.ack
-				check_all
-			end
-		end
-		@@handlers ||= []
-		at_exit { Minion.run } if @@handlers.size == 0
-		@@handlers << handler
+    options = options.merge(:exchange_name => exchange_name)
+		add_handler(queue, options, &blk)
 	end
 
 	def decode_json(string)
@@ -192,5 +141,49 @@ module Minion
   def encode(data)
     JSON.dump(data)
   end
-end
 
+  def build_handler(queue, options)
+    exchange_name = options[:exchange_name]
+    handler = Minion::Handler.new queue
+		handler.when = options[:when] if options[:when]
+		handler.unsub = lambda do
+			log "unsubscribing to #{queue}"
+      if exchange
+        exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
+        MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange).unsubscribe
+      else
+        MQ.queue(queue, :durable => true, :auto_delete => false).unsubscribe
+      end
+		end
+		handler.sub = lambda do
+			log "subscribing to #{queue}"
+
+      if exchange_name
+        exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
+        queue    = MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange)
+      else
+        queue = MQ.queue(queue, :durable => true, :auto_delete => false)
+      end
+
+			queue.subscribe(:ack => true) do |h,m|
+				return if AMQP.closing?
+				begin
+					log "recv: #{queue}:#{m}"
+
+					args = decode_json(m)
+
+					result = yield(args)
+
+					next_job(args, result)
+				rescue Object => e
+					raise unless error_handler
+					error_handler.call(e,queue,m,h)
+				end
+				h.ack
+				check_all
+			end
+		end
+    handler
+  end
+
+end
