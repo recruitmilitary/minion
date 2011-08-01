@@ -18,8 +18,15 @@ logger do |msg|
   puts "--> #{msg}"
 end
 
-subscribe "unsubscribe", queue do |args|
+subscribe "unsubscribes", queue do |args|
+  puts "unsubscribes"
   puts args.inspect
 end
 
-publish("unsubscribe", :email => "foo@bar.com")
+subscribe "bounces", queue do |args|
+  puts "bounces"
+  puts args.inspect
+end
+
+publish("unsubscribes", :email => "foo@bar.com")
+publish("bounces", :email => "bounce@bar.com")
