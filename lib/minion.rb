@@ -154,7 +154,7 @@ module Minion
 
       if exchange_name
         exchange = MQ.fanout(exchange_name, :durable => true, :auto_delete => false)
-        queue    = MQ.queue(queue, :durable => true, :auto_delete => false, :type => :fanout).bind(exchange)
+        queue    = MQ.queue("#{queue}-#{exchange_name}", :durable => true, :auto_delete => false, :type => :fanout).bind(exchange)
       else
         queue = MQ.queue(queue, :durable => true, :auto_delete => false)
       end
