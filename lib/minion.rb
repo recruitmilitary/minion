@@ -49,14 +49,6 @@ module Minion
     add_handler(queue, options, &blk)
   end
 
-  def decode_json(string)
-    if defined? ActiveSupport::JSON
-      ActiveSupport::JSON.decode string
-    else
-      JSON.load string
-    end
-  end
-
   def check_all
     @@handlers.each { |h| h.check }
   end
@@ -133,7 +125,19 @@ module Minion
   end
 
   def encode(data)
-    JSON.dump(data)
+    if defined? ActiveSupport::JSON
+      ActiveSupport::JSON.encode(data)
+    else
+      JSON.dump(data)
+    end
+  end
+
+  def decode(string)
+    if defined? ActiveSupport::JSON
+      ActiveSupport::JSON.decode(string)
+    else
+      JSON.load(string)
+    end
   end
 
   def build_handler(queue, options)
@@ -164,7 +168,7 @@ module Minion
         begin
           log "recv: #{queue}:#{m}"
 
-          args = decode_json(m)
+          args = decode(m)
 
           result = yield(args)
 
